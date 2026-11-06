@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CAN Debug</title>
+<style>
+:root{--bg:#e9edf0;--sf:#fbfcfc;--ink:#1b2229;--mu:#5c6873;--ln:#c4ccd3;--ac:#1f5fbf;--al:#d9541e;--ok:#1c8a55}
+@media(prefers-color-scheme:dark){:root{--bg:#14181c;--sf:#1c2227;--ink:#e4e9ed;--mu:#8d9aa6;--ln:#2e373f;--ac:#6aa5ff;--al:#ff8a5c;--ok:#4cc88a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:900px;margin:0 auto;padding:12px}
+h1{font-size:18px;margin:0 0 8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.st{font-size:13px;font-weight:500;color:var(--mu)}.st.ok{color:var(--ok)}.st.wr{color:var(--al)}.st.er{color:#d22}
+button,select,input{font:inherit;color:var(--ink);background:var(--sf);border:1px solid var(--ln);border-radius:6px;padding:7px 11px}
+button{cursor:pointer}button:hover:not(:disabled){border-color:var(--ac)}button:disabled{opacity:.45;cursor:default}
+button.pri{background:var(--ac);border-color:var(--ac);color:#fff}button.dg{border-color:var(--al);color:var(--al)}
+:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+.row{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;align-items:center}
+.info{font:12px ui-monospace,monospace;color:var(--mu);margin:4px 0 10px}
+nav{display:flex;border-bottom:1px solid var(--ln);margin-bottom:10px;overflow-x:auto}
+nav button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:9px 14px}
+nav button.on{border-bottom-color:var(--ac);font-weight:600}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.c{background:var(--sf);border:1px solid var(--ln);border-radius:6px;padding:9px 11px}
+.c small{color:var(--mu);display:block;font-size:12px}
+.c b{font:600 26px/1.2 ui-monospace,monospace;font-variant-numeric:tabular-nums}.c i{font-style:normal;color:var(--mu);font-size:12px;margin-left:4px}
+table{width:100%;border-collapse:collapse;font:13px ui-monospace,monospace}
+th,td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--ln)}th{color:var(--mu);font-weight:500}
+.h{background:var(--al);color:#fff;border-radius:3px;padding:0 2px}
+pre{background:var(--sf);border:1px solid var(--ln);border-radius:6px;padding:8px;height:260px;overflow:auto;font:12px ui-monospace,monospace;margin:6px 0;white-space:pre-wrap}
+.dtc{display:flex;gap:12px;align-items:baseline;background:var(--sf);border:1px solid var(--ln);border-left:4px solid var(--al);border-radius:6px;padding:8px 11px;margin:6px 0}
+.dtc b{font:600 18px ui-monospace,monospace}.mu{color:var(--mu)}
+input{flex:1;min-width:90px}
+.c{cursor:pointer}.c.off{opacity:.4}details{margin:2px 0}summary{cursor:pointer;padding:4px 0;font-weight:600}.pb{display:flex;flex-wrap:wrap;gap:5px;padding:2px 0 6px}.pb button{padding:4px 9px;font-size:13px}.pb span{display:inline-flex}.x{border:0;background:none;padding:0 5px;color:var(--mu)}
+.box{background:var(--sf);border:1px solid var(--ln);border-left:4px solid var(--ac);border-radius:6px;padding:10px 12px;margin:8px 0;font-size:14px;line-height:1.5}.dtc button{margin-left:auto;padding:3px 9px;font-size:13px}
+.warn{font-size:12px;color:var(--al);margin:6px 0}
+</style></head><body><main>
+<h1>CAN Debug <span class="st" id="st">Desconectado</span></h1>
+<div class="row">
+ <button class="pri" id="bU">USB serial</button>
+ <select id="baud" title="Baud rate do adaptador USB"><option value="auto">Auto</option><option>38400</option><option>115200</option><option>9600</option><option>230400</option><option>500000</option></select>
+ <button id="bB">Bluetooth LE</button><button id="bD">Demo</button><button id="bX" hidden>Desconectar</button>
+</div>
+<div class="info"><span id="ver">—</span> · <span id="proto">—</span> · <span id="vb">—</span> · <span id="mil"></span></div>
+<nav><button data-t="p" class="on">Painel</button><button data-t="d">Falhas</button><button data-t="m">Monitor CAN</button><button data-t="t">Terminal</button></nav>
+
+<section id="p">
+ <div class="row"><button id="lv" disabled>Ler ao vivo</button><button id="csvL">Exportar CSV</button><label class="mu"><input type="checkbox" id="onlySup" checked style="flex:none;min-width:0"> só suportados</label></div>
+ <div class="info" id="sl"></div>
+ <div class="info" id="lf"></div>
+ <div id="grid"></div>
+</section>
+
+<section id="d" hidden>
+ <div class="row"><button data-m="03">Armazenadas</button><button data-m="07">Pendentes</button><button data-m="0A">Permanentes</button><button class="dg" id="clr">Limpar falhas</button></div>
+ <div id="dl" class="mu">Escolha um tipo de leitura.</div>
+ <div class="row"><input id="vh" placeholder="Veículo: marca, modelo, ano, motor (melhora a resposta da IA)"></div>
+ <div class="row"><input id="dq" placeholder="Código (P0420)" maxlength="5" style="max-width:150px;flex:none"><button class="pri" id="ai">Pesquisar com IA</button><button id="aiw">Abrir no Claude.ai</button><button id="ak">Chave/modelo…</button>
+  <label class="mu"><input type="checkbox" id="aw" style="flex:none;min-width:0"> buscar na web</label><label class="mu"><input type="checkbox" id="al" checked style="flex:none;min-width:0"> incluir leituras</label></div>
+ <div id="aq" class="box" hidden></div>
+</section>
+
+<section id="m" hidden>
+ <div class="row"><input id="flt" placeholder="Filtrar ID (ex.: 7E8) — vazio = todos" maxlength="8"><button class="pri" id="ms">Iniciar</button><button id="csvM">Exportar CSV</button></div>
+ <div class="info"><span id="mc">0 frames</span> · <span id="mm">Bytes alterados nos últimos 1,5 s ficam destacados.</span></div>
+ <table><thead><tr><th>ID</th><th>Qtd</th><th>ms</th><th>Dados</th></tr></thead><tbody id="mt"></tbody></table>
+</section>
+
+<section id="t" hidden>
+ <div class="row"><input id="ci" placeholder="Comando — use ; para sequência (ATSH7E0;22F190)" autocapitalize="characters"><button class="pri" id="cs">Enviar</button><button id="cf">☆ Salvar</button><label class="mu"><input type="checkbox" id="tr" checked style="flex:none;min-width:0"> traduzir</label></div>
+ <div id="pre"></div>
+ <div class="row"><button id="tc">Limpar</button><button id="te">Exportar log</button></div>
+ <pre id="term"></pre>
+ <div class="row"><input id="fi" placeholder="ID (7E0)" maxlength="8" style="max-width:110px"><input id="fd" placeholder="Dados hex (02 01 0C)"><button class="dg" id="fs">Enviar frame</button></div>
+ <div class="warn">Enviar frames/comandos de escrita pode alterar o comportamento do veículo. Use apenas com o carro parado e se souber o que faz.</div>
+</section>
+</main>
+<script>
+const $=s=>document.querySelector(s),h2=n=>n.toString(16).toUpperCase().padStart(2,'0'),hx=s=>s.replace(/\s/g,'').toUpperCase(),
+bytes=h=>(h.match(/../g)||[]).map(x=>parseInt(x,16)),sleep=ms=>new Promise(r=>setTimeout(r,ms)),rnd=n=>Math.floor(Math.random()*n);
+const pct=b=>b[0]*100/255,u16=b=>b[0]*256+b[1],raw=b=>b.map(h2).join(' '),sg=b=>(b[0]-128)*100/128;
+const O2=['B1S1','B1S2','B1S3','B1S4','B2S1','B2S2','B2S3','B2S4'];
+const BASE=[
+[0x03,'Estado sist. combustível','',2,raw],[0x04,'Carga do motor','%',1,pct],[0x05,'Temp. líquido arref.','°C',1,b=>b[0]-40],
+[0x06,'Trim curto comb. B1','%',1,sg],[0x07,'Trim longo comb. B1','%',1,sg],[0x08,'Trim curto comb. B2','%',1,sg],[0x09,'Trim longo comb. B2','%',1,sg],
+[0x0A,'Pressão combustível','kPa',1,b=>b[0]*3],[0x0B,'Pressão MAP','kPa',1,b=>b[0]],[0x0C,'Rotação','rpm',2,b=>u16(b)/4],[0x0D,'Velocidade','km/h',1,b=>b[0]],
+[0x0E,'Avanço ignição','°',1,b=>b[0]/2-64],[0x0F,'Temp. ar admissão','°C',1,b=>b[0]-40],[0x10,'Vazão MAF','g/s',2,b=>u16(b)/100],[0x11,'Posição borboleta','%',1,pct],
+[0x13,'Sensores O2 presentes','',1,raw],...O2.map((s,i)=>[0x14+i,'O2 '+s+' tensão','V',1,b=>b[0]/200]),
+[0x1C,'Padrão OBD','',1,raw],[0x1F,'Tempo desde partida','s',2,u16],[0x21,'Dist. com MIL acesa','km',2,u16],
+[0x22,'Pressão rail (rel. coletor)','kPa',2,b=>u16(b)*0.079],[0x23,'Pressão rail (direta/diesel)','kPa',2,b=>u16(b)*10],
+...O2.map((s,i)=>[0x24+i,'Lambda '+s,'λ',2,b=>u16(b)*2/65536]),
+[0x2C,'EGR comandado','%',1,pct],[0x2D,'Erro EGR','%',1,sg],[0x2E,'Purga evap. comandada','%',1,pct],[0x2F,'Nível combustível','%',1,pct],
+[0x30,'Aquecimentos desde limpeza','',1,b=>b[0]],[0x31,'Dist. desde limpeza','km',2,u16],[0x32,'Pressão vapor evap.','Pa',2,b=>((u16(b)<<16)>>16)/4],[0x33,'Pressão barométrica','kPa',1,b=>b[0]],
+...['B1S1','B2S1','B1S2','B2S2'].map((s,i)=>[0x3C+i,'Temp. catalisador '+s,'°C',2,b=>u16(b)/10-40]),
+[0x42,'Tensão do módulo','V',2,b=>u16(b)/1000],[0x43,'Carga absoluta','%',2,b=>u16(b)*100/255],[0x44,'Lambda comandado','λ',2,b=>u16(b)*2/65536],
+[0x45,'Borboleta relativa','%',1,pct],[0x46,'Temp. ambiente','°C',1,b=>b[0]-40],[0x47,'Borboleta B (abs.)','%',1,pct],
+[0x49,'Pedal acelerador D','%',1,pct],[0x4A,'Pedal acelerador E','%',1,pct],[0x4B,'Pedal acelerador F','%',1,pct],[0x4C,'Atuador borboleta cmd.','%',1,pct],
+[0x4D,'Tempo com MIL acesa','min',2,u16],[0x4E,'Tempo desde limpeza','min',2,u16],[0x51,'Tipo de combustível','',1,raw],[0x52,'Etanol','%',1,pct],
+[0x5A,'Pedal acelerador rel.','%',1,pct],[0x5B,'Vida bateria híbrida','%',1,pct],[0x5C,'Temp. óleo','°C',1,b=>b[0]-40],
+[0x5D,'Avanço injeção','°',2,b=>u16(b)/128-210],[0x5E,'Consumo','L/h',2,b=>u16(b)/20],
+[0x61,'Torque demandado','%',1,b=>b[0]-125],[0x62,'Torque real','%',1,b=>b[0]-125],[0x63,'Torque referência','Nm',2,u16],
+[0xA6,'Odômetro','km',4,b=>(b[0]*16777216+(b[1]<<16)+(b[2]<<8)+b[3])/10]
+].map(([id,n,u,l,f])=>({id,n,u,l,f}));
+let PIDS=[...BASE];
+
+let T=null,buf='',waiter=null,chain=Promise.resolve(),proto='',sup=null,live=false,mon=null,lastMon=null,lastErr='',samples=[];
+const st=(t,c='')=>{$('#st').textContent=t;$('#st').className='st '+c};
+const tl=[],ts=()=>{const d=new Date();return d.toLocaleTimeString('pt-BR',{hour12:false})+'.'+String(d.getMilliseconds()).padStart(3,'0')};
+const tlog=t=>{const l=ts()+' '+t;if(tl.length<50000)tl.push(l);const e=$('#term');e.textContent+=l+'\n';if(e.textContent.length>40000)e.textContent=e.textContent.slice(-20000);e.scrollTop=e.scrollHeight};
+const errOf=L=>L.find(l=>/UNABLE|NO DATA|CAN ERROR|BUS (BUSY|ERROR)|BUS INIT:.*ERROR|DATA ERROR|BUFFER FULL|FB ERROR|ERR\d\d|^\?$/i.test(l))||null;
+const isCan=()=>/^[6-9A-C]$/.test(proto.length>1?proto.slice(1):proto);
+function dl(name,text){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/csv'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+
+/* ---------- comunicação ---------- */
+function onRx(s){
+ buf+=s.replace(/\0/g,'');
+ if(!mon&&!waiter&&s.trim())tlog('rx? '+JSON.stringify(s));
+ if(mon){let i;while((i=buf.search(/[\r\n>]/))>=0){const ch=buf[i],ln=buf.slice(0,i).trim();buf=buf.slice(i+1);
+   if(ch==='>'){mon.stop?mon.stop():T&&T.write('ATMA\r');continue}if(ln)monLine(ln)}return}
+ const i=buf.indexOf('>');
+ if(i>=0&&waiter){const r=buf.slice(0,i);buf=buf.slice(i+1);const w=waiter;waiter=null;w(r)}
+}
+/* ---------- tradução de comandos e respostas ---------- */
+const ATD={Z:'Reiniciar adaptador',E0:'Desligar eco',E1:'Ligar eco',L0:'Sem quebras de linha extras',L1:'Com quebras de linha extras',S0:'Respostas sem espaços',S1:'Respostas com espaços',H0:'Ocultar cabeçalhos (IDs)',H1:'Mostrar cabeçalhos (IDs)',I:'Versão do adaptador',RV:'Tensão medida pelo adaptador',DP:'Protocolo em uso',DPN:'Nº do protocolo em uso',CS:'Contadores de erro CAN',CAF0:'Formatação CAN automática desligada',CAF1:'Formatação CAN automática ligada',MA:'Monitorar o barramento',WS:'Reinício rápido',D:'Restaurar padrões',AT0:'Timing adaptativo desligado',AT1:'Timing adaptativo normal',AT2:'Timing adaptativo agressivo',SP0:'Protocolo automático'};
+const PRN={1:'SAE J1850 PWM',2:'SAE J1850 VPW',3:'ISO 9141-2',4:'ISO 14230-4 KWP (5 baud)',5:'ISO 14230-4 KWP (rápido)',6:'ISO 15765-4 CAN 11 bits/500k',7:'ISO 15765-4 CAN 29 bits/500k',8:'ISO 15765-4 CAN 11 bits/250k',9:'ISO 15765-4 CAN 29 bits/250k',A:'SAE J1939 CAN 29 bits/250k'};
+const MODES={'03':'Ler falhas armazenadas','04':'Limpar falhas e dados de congelamento','07':'Ler falhas pendentes','0A':'Ler falhas permanentes','0600':'Modo 06: testes de monitoramento suportados','0900':'Modo 09: informações suportadas','0902':'Ler VIN (chassi)','0904':'Ler Cal. ID (calibração)','0906':'Ler CVN (verificação de calibração)','090A':'Ler nome da ECU'};
+const DID={F190:'VIN',F187:'nº de peça',F18C:'nº de série',F191:'versão de hardware',F195:'versão de software'};
+const NRC={10:'erro geral',11:'serviço não suportado',12:'subfunção não suportada',13:'formato inválido',22:'condições incorretas',31:'fora de alcance',33:'acesso negado (segurança)',35:'chave inválida',78:'resposta pendente'};
+const ERRT=[[/NO DATA/i,'Sem dados (ECU não respondeu ou PID não suportado)'],[/UNABLE TO CONNECT/i,'Não foi possível conectar ao veículo (ignição/protocolo)'],[/BUFFER FULL/i,'Buffer do adaptador estourou (muitas respostas ou baud baixo)'],[/CAN ERROR/i,'Erro no barramento CAN'],[/BUS BUSY/i,'Barramento ocupado'],[/BUS INIT:.*ERROR/i,'Falha ao inicializar o barramento'],[/BUS INIT:.*OK/i,'Barramento inicializado'],[/DATA ERROR/i,'Resposta com erro de dados'],[/FB ERROR/i,'Erro de feedback (fio/barramento)'],[/SEARCHING/i,'Procurando protocolo…'],[/STOPPED/i,'Interrompido'],[/^\?$/,'Comando não reconhecido'],[/^OK$/,'OK']];
+const HARD=/UNABLE|BUFFER FULL|CAN ERROR|DATA ERROR|BUS (BUSY|ERROR)|FB ERROR|BUS INIT:.*ERROR/i;
+const trErr=l=>{const e=ERRT.find(([r])=>r.test(l));return e?e[1]:null};
+const after=(L,w)=>{for(const l of L){const h=hx(l),i=h.indexOf(w);if(i>=0&&/^[0-9A-F]+$/.test(h))return bytes(h.slice(i+w.length))}return null};
+const txt=b=>b.filter(v=>v>=32&&v<127).map(v=>String.fromCharCode(v)).join('');
+const pidOf=n=>PIDS.concat(BASE).find(q=>q.id===n);
+function asciiFrom(L,w){
+ const ml=L.filter(l=>/^[0-9A-F]:/i.test(l)),ch=ml.length?[ml.map(l=>l.replace(/^[0-9A-F]:/i,'')).join(' ')]:L.filter(l=>/^[0-9A-F\s]+$/i.test(l)&&!/^[0-9A-F]{3}$/i.test(l));
+ return ch.map(c=>{const b=bytes(hx(c)),i=b.findIndex((v,k)=>v===parseInt(w.slice(0,2),16)&&b[k+1]===parseInt(w.slice(2),16));return i<0?'':txt(b.slice(i+3))}).filter(Boolean).join(isCan()?' / ':'');
+}
+function trCmd(c){
+ const x=c.replace(/\s/g,'').toUpperCase();let m;
+ if(x.startsWith('AT')){const a=x.slice(2);
+  if(ATD[a])return ATD[a];
+  if(m=a.match(/^SP([0-9A])$/))return 'Definir protocolo '+m[1]+' ('+PRN[m[1]]+')';
+  if(m=a.match(/^SH([0-9A-F]+)$/))return 'Definir ID de requisição '+m[1];
+  if(a==='CRA')return 'Remover filtro de ID';
+  if(m=a.match(/^CRA([0-9A-F]+)$/))return 'Receber somente do ID '+m[1];
+  if(m=a.match(/^ST([0-9A-F]+)$/))return 'Timeout de resposta '+parseInt(m[1],16)*4+' ms';
+  return null}
+ if(!/^[0-9A-F]+$/.test(x)||x.length%2)return null;
+ if(MODES[x])return MODES[x];
+ const sid=x.slice(0,2);
+ if(sid==='01'&&x.length===4){const n=parseInt(x.slice(2),16);if(n===1)return 'Status do monitor / MIL';if(n%32===0)return 'PIDs suportados ('+h2(n+1)+'–'+h2(n+32)+')';const p=pidOf(n);return 'Modo 01: '+(p?p.n:'PID '+h2(n))}
+ if(sid==='02'&&x.length===6){const p=pidOf(parseInt(x.slice(2,4),16));return 'Quadro congelado: '+(p?p.n:'PID '+x.slice(2,4))}
+ if(sid==='22'&&x.length===6)return 'UDS: ler dado '+x.slice(2)+(DID[x.slice(2)]?' ('+DID[x.slice(2)]+')':'');
+ if(sid==='19'&&x.length===6)return 'UDS: ler falhas (máscara '+x.slice(4)+')';
+ if(x==='3E00')return 'UDS: tester present';
+ if(sid==='10')return 'UDS: iniciar sessão '+x.slice(2);
+ return null;
+}
+function decode(x,L){
+ if(x==='ATRV')return L[0]?'Tensão: '+L[0]:null;
+ if(x==='ATDPN'&&L[0]){const a=L[0].length>1&&L[0][0]==='A',n=a?L[0].slice(1):L[0];return(a?'Automático: ':'')+(PRN[n]||n)}
+ if(!/^[0-9A-F]+$/.test(x)||x.length%2||L.some(l=>HARD.test(l)))return null;
+ const sid=x.slice(0,2),pos=h2(parseInt(sid,16)+0x40);let b;
+ for(const l of L){const h=hx(l);if(h.startsWith('7F'+sid)&&h.length>=6&&/^[0-9A-F]+$/.test(h))return 'Resposta negativa: '+(NRC[h.slice(4,6)]||'código '+h.slice(4,6))}
+ if(sid==='01'&&x.length===4){
+  const n=parseInt(x.slice(2),16);b=after(L,pos+x.slice(2));if(!b)return null;
+  if(n%32===0&&b.length>=4){const m=((b[0]<<24)|(b[1]<<16)|(b[2]<<8)|b[3])>>>0,r=[];for(let i=1;i<=31;i++)if(m&(1<<(32-i)))r.push(h2(n+i));return r.length+' PIDs suportados: '+r.join(' ')+(m&1?' (+ próxima faixa)':'')}
+  if(n===1)return(b[0]&128?'MIL acesa':'MIL apagada')+', '+(b[0]&127)+' falha(s)';
+  const p=pidOf(n);if(!p)return 'Valor bruto: '+raw(b);if(b.length<p.l)return null;
+  const v=p.f(b);return p.n+': '+(typeof v==='number'?(Math.abs(v)>=100?v.toFixed(0):v.toFixed(1)):v)+(p.u?' '+p.u:'');
+ }
+ if(x==='03'||x==='07'||x==='0A'){const d=dtcFrom(L,x);return d.length?d.length+' falha(s): '+d.join(', '):'Nenhuma falha'}
+ if(x==='04')return L.some(l=>hx(l).includes('44'))?'ECU confirmou a limpeza':null;
+ if(sid==='09'&&x.length===4){
+  if(L.filter(l=>/^0:/.test(l)).length>1)return 'Várias ECUs responderam ao mesmo tempo (use ATSH7E0 ou ATH1 para separar)';
+  const nm={'02':'VIN','04':'Cal. ID','0A':'Nome da ECU'}[x.slice(2)];if(!nm)return null;
+  const t=asciiFrom(L,'49'+x.slice(2));return t?nm+': '+t:null}
+ if(sid==='22'&&x.length===6){b=after(L,'62'+x.slice(2));if(!b)return null;return(DID[x.slice(2)]||'Dado '+x.slice(2))+': '+((/^F1[89]/.test(x.slice(2))&&txt(b))||raw(b))}
+ if(sid==='19'&&x.slice(2,4)==='02'){b=after(L,'5902');if(!b)return null;b=b.slice(1);const o=[];
+  for(let i=0;i+3<b.length;i+=4)o.push('PCBU'[b[i]>>6]+((b[i]>>4)&3)+(b[i]&15).toString(16).toUpperCase()+h2(b[i+1])+'-'+h2(b[i+2])+' (status '+h2(b[i+3])+')');
+  return o.length?o.length+' falha(s): '+o.join(', '):'Nenhuma falha'}
+ if(x==='3E00')return L.some(l=>hx(l).includes('7E00'))?'ECU respondeu (tester present)':null;
+ if(sid==='10')return L.some(l=>hx(l).includes('50'+x.slice(2,4)))?'Sessão iniciada':null;
+ return null;
+}
+function trRsp(c,L){
+ const x=c.replace(/\s/g,'').toUpperCase();let d=null;
+ try{d=decode(x,L)}catch{}
+ if(d)return d;
+ const e=L.map(trErr).filter(t=>t&&t!=='OK');return e.length?e.join('; '):null;
+}
+const fmtTx=(c,raw)=>{try{const t=!raw&&$('#tr').checked?trCmd(c):null;return t?t+' ('+c+')':c}catch{return c}};
+const fmtRx=(c,L,raw)=>{const r=L.join(' | ');try{const t=!raw&&$('#tr').checked?trRsp(c,L):null;return t?t+' ('+r+')':r}catch{return r}};
+function cmd(c,ms=5000,raw=false){
+ const run=()=>new Promise((res,rej)=>{
+  if(!T)return rej(new Error('Desconectado'));if(mon)return rej(new Error('Monitor ativo — pare o monitor'));
+  buf='';const t=setTimeout(()=>{waiter=null;rej(new Error('Sem resposta ao comando '+c+' (baud rate/adaptador?)'))},ms);
+  waiter=r=>{clearTimeout(t);const L=r.replace(/\r/g,'\n').split('\n').map(x=>x.trim()).filter(x=>x&&x.toUpperCase()!==c.toUpperCase());tlog('< '+fmtRx(c,L,raw));res(L)};
+  tlog('> '+fmtTx(c,raw));T.write(c+'\r')});
+ const p=chain.then(run);chain=p.catch(()=>{});return p;
+}
+async function q(c){
+ const L=await cmd(c,9000),want=h2(parseInt(c.slice(0,2),16)+0x40)+c.slice(2);
+ for(const l of L){const h=hx(l),i=h.indexOf(want);if(i>=0&&/^[0-9A-F]+$/.test(h))return bytes(h.slice(i+want.length))}
+ lastErr=errOf(L)||L.join(' ')||'sem resposta';return null;
+}
+async function scan(){
+ sup=new Set();
+ for(const base of [0,0x20,0x40,0x60,0x80,0xA0,0xC0]){
+  let b=await q('01'+h2(base));if(!b)b=await q('01'+h2(base));if(!b||b.length<4)return sup.size>0;
+  const m=((b[0]<<24)|(b[1]<<16)|(b[2]<<8)|b[3])>>>0;
+  for(let i=1;i<=32;i++)if(m&(1<<(32-i)))sup.add(base+i);
+  if(!(m&1))break;
+ }
+ return true;
+}
+async function init(){
+ ui(true);st('Inicializando…','wr');
+ $('#ver').textContent=(await cmd('ATZ',6000)).join(' ');
+ for(const c of ['ATE0','ATL0','ATS1','ATH0','ATSP0'])await cmd(c);
+ st('Procurando protocolo…','wr');
+ const ok=await scan();
+ proto=(await cmd('ATDPN'))[0]||'';$('#proto').textContent=(await cmd('ATDP')).join(' ');
+ await info();
+ PIDS=[...BASE];const known=new Set(BASE.map(p=>p.id));
+ if(sup)for(const id of [...sup].sort((a,b)=>a-b))if(!known.has(id)&&id%32&&id!==1)PIDS.push({id,n:'PID '+h2(id),u:'',l:0,f:raw});
+ buildGrid();
+ if(ok){st('Conectado','ok');$('#lv').disabled=false}else st('Adaptador OK, veículo não responde ('+lastErr+') — ligue a ignição','wr');
+}
+async function info(){
+ try{$('#vb').textContent=(await cmd('ATRV'))[0]||'—'}catch{}
+ try{const b=await q('0101');if(b){$('#mil').textContent=(b[0]&128?'MIL acesa':'MIL apagada')+' · '+(b[0]&127)+' falha(s)';$('#mil').style.color=b[0]&128?'var(--al)':''}}catch{}
+}
+function ui(on){['bU','bB','bD','baud'].forEach(i=>$('#'+i).disabled=on);$('#bX').hidden=!on;if(!on){$('#lv').disabled=true}}
+async function disc(){
+ live=false;if(mon)await monStop().catch(()=>{});
+ const t=T;T=null;try{t&&await t.close()}catch{}
+ ui(false);st('Desconectado');$('#lv').textContent='Ler ao vivo';
+}
+const fail=e=>{st(e.message||String(e),'er')};
+
+/* ---------- transportes ---------- */
+async function connSerial(){
+ const p=await navigator.serial.requestPort(),sel=$('#baud').value,list=sel==='auto'?[38400,115200,9600,230400,500000]:[+sel];
+ let ok=false;
+ for(const b of list){
+  st('Testando '+b+' baud…','wr');
+  await p.open({baudRate:b});
+  const w=p.writable.getWriter(),rd=p.readable.getReader(),dec=new TextDecoder(),enc=new TextEncoder();
+  const me={write:s=>w.write(enc.encode(s)),close:async()=>{try{await rd.cancel()}catch{}try{rd.releaseLock()}catch{}try{await w.close()}catch{}try{w.releaseLock()}catch{}try{await p.close()}catch{}}};
+  T=me;
+  (async()=>{try{for(;;){const{value,done}=await rd.read();if(done)break;onRx(dec.decode(value,{stream:true}))}}catch{}if(T===me){st('Conexão perdida','er');disc()}})();
+  try{await cmd('ATI',2000);ok=true;break}catch{}
+  T=null;chain=Promise.resolve();await me.close();
+ }
+ if(!ok)throw new Error('Sem resposta do adaptador em nenhum baud rate. Confirme que há um ELM327 na ponta do cabo.');
+ await init();
+}
+async function connBle(){
+ const SV=[0xfff0,0xffe0,0x18f0,'e7810a71-73ae-499d-8c15-faa9aef0c3f2','0000ffe0-0000-1000-8000-00805f9b34fb'];
+ const dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:SV});
+ const srv=await dev.gatt.connect();let nc=null,wc=null;
+ for(const s of await srv.getPrimaryServices()){
+  const cs=await s.getCharacteristics();
+  const n=cs.find(c=>c.properties.notify||c.properties.indicate),w=cs.find(c=>c.properties.write||c.properties.writeWithoutResponse);
+  if(n&&w){nc=n;wc=w;break}
+ }
+ if(!nc)throw new Error('Serviço serial BLE não encontrado — este adaptador provavelmente é Bluetooth clássico (use USB ou um BLE).');
+ const dec=new TextDecoder(),enc=new TextEncoder();
+ await nc.startNotifications();nc.addEventListener('characteristicvaluechanged',e=>onRx(dec.decode(e.target.value)));
+ dev.addEventListener('gattserverdisconnected',()=>{if(T){st('Conexão perdida','er');disc()}});
+ let q2=Promise.resolve();
+ T={write:s=>{const b=enc.encode(s);for(let i=0;i<b.length;i+=20){const ch=b.slice(i,i+20);q2=q2.then(()=>wc.properties.writeWithoutResponse?wc.writeValueWithoutResponse(ch):wc.writeValue(ch))}return q2},close:async()=>{dev.gatt.disconnect()}};
+ await init();
+}
+let mt=null;
+const SIMV={4:()=>[80+rnd(40)],5:()=>[130],0xB:()=>[35+rnd(20)],0xC:()=>{const v=(850+rnd(60))*4;return[v>>8,v&255]},0xD:()=>[rnd(5)],0xF:()=>[70],0x10:()=>[3,rnd(255)],0x11:()=>[40+rnd(10)],0x2F:()=>[120],0x42:()=>[0x37,0xF4],0x1E:()=>[0],0x1F:()=>[0,rnd(255)],0x33:()=>[101],0xA6:()=>[0,1,0x86,0xA0]};
+const smask=b=>{let v=0;for(let i=1;i<32;i++)if(SIMV[b+i])v|=1<<(32-i);if(Object.keys(SIMV).some(k=>k>b+32))v|=1;return[24,16,8,0].map(s=>(v>>>s)&255)};
+function sim(c){
+ let m;if(c==='ATMA'){mt=setInterval(()=>{const id=['7E8','7E0','1A0','2C4','3B7'][rnd(5)];onRx(id+' '+Array.from({length:8},(_,i)=>h2(i<2?rnd(256):id=='2C4'?rnd(4):i)).join(' ')+'\r')},30);return null}
+ if(/^ATZ|^ATI/.test(c))return'ELM327 v1.5 (demo)';if(c==='ATRV')return'12.6V';if(c==='ATDPN')return'A6';if(c==='ATDP')return'AUTO, ISO 15765-4 (CAN 11/500)';
+ if(/^AT/.test(c))return'OK';if(c==='0101')return'41 01 82 07 E5 00';
+ if(m=c.match(/^01([0-9A-F]{2})$/)){const p=parseInt(m[1],16);if(p%32==0&&p<=0xC0)return(p===0?'BUS INIT: ...OK\r':'')+'41 '+m[1]+' '+smask(p).map(h2).join(' ');if(SIMV[p])return'41 '+m[1]+' '+SIMV[p]().map(h2).join(' ');return'NO DATA'}
+ if(c==='03')return'43 02 01 33 01 34 00';if(c==='07')return'47 00';if(c==='04')return'44';return c==='0A'?'NO DATA':'?';
+}
+async function connDemo(){
+ T={write:s=>{const c=s.trim().toUpperCase();if(!c){clearInterval(mt);setTimeout(()=>onRx('>'),30);return}setTimeout(()=>{const r=sim(c);if(r!==null)onRx(r+'\r\r>')},40)},close:async()=>clearInterval(mt)};
+ await init();
+}
+
+/* ---------- painel ao vivo ---------- */
+const off=new Set();
+function applyHide(){const only=$('#onlySup').checked&&sup&&sup.size;PIDS.forEach(p=>{const c=$('#c'+p.id);if(c)c.hidden=!!only&&!sup.has(p.id)});
+ $('#sl').textContent=sup?'Suportados pelo veículo ('+sup.size+'): '+[...sup].sort((a,b)=>a-b).map(h2).join(' '):''}
+function buildGrid(){$('#grid').innerHTML=PIDS.map(p=>`<div class="c${off.has(p.id)?' off':''}" id="c${p.id}" data-id="${p.id}" title="Clique para ligar/desligar a leitura"><small>${p.n} (${h2(p.id)})</small><b>—</b><i>${p.u}</i></div>`).join('');applyHide()}
+$('#grid').onclick=e=>{const c=e.target.closest('.c');if(!c)return;const id=+c.dataset.id;off.has(id)?off.delete(id):off.add(id);c.classList.toggle('off')};
+$('#onlySup').onchange=applyHide;
+async function liveToggle(){
+ if(live){live=false;return}if(!T)return;if(mon)return st('Pare o monitor antes','wr');
+ live=true;$('#lv').textContent='Parar';
+ try{while(live&&T){
+  for(const p of PIDS){if(!live||!T)break;if(off.has(p.id)||(sup&&sup.size&&!sup.has(p.id)))continue;
+   const b=await q('01'+h2(p.id)),el=$('#c'+p.id+' b');
+   if(b&&b.length>=p.l){const v=p.f(b),t=typeof v==='number'?(Math.abs(v)>=100?v.toFixed(0):v.toFixed(1)):v;if(el)el.textContent=t;
+    if(samples.length<200000)samples.push([new Date().toISOString(),p.n,t,p.u])}else{if(b)lastErr='resposta curta: '+raw(b);if(el){el.textContent='n/d';el.parentNode.title='Falha: '+lastErr;$('#lf').textContent='Falha em 01'+h2(p.id)+': '+lastErr}}}
+  try{$('#vb').textContent=(await cmd('ATRV'))[0]||'—'}catch{}
+ }}catch(e){fail(e)}
+ live=false;$('#lv').textContent='Ler ao vivo';
+}
+
+/* ---------- falhas (DTC) ---------- */
+const CAT={P:'Powertrain (motor/câmbio)',C:'Chassi',B:'Carroceria',U:'Rede/comunicação'};
+function dtcFrom(L,mode){
+ const ok=parseInt(mode,16)+0x40,ml=L.filter(l=>/^[0-9A-F]:/i.test(l));
+ const ch=ml.length?[ml.map(l=>l.replace(/^[0-9A-F]:/i,'')).join(' ')]:L.filter(l=>/^[0-9A-F\s]+$/i.test(l)&&!/^[0-9A-F]{3}$/i.test(l));
+ const out=[];
+ for(const c of ch){let b=bytes(hx(c));const i=b.indexOf(ok);if(i<0)continue;b=b.slice(i+1);if(isCan())b=b.slice(1);
+  for(let j=0;j+1<b.length;j+=2){if(!b[j]&&!b[j+1])continue;out.push('PCBU'[b[j]>>6]+((b[j]>>4)&3)+(b[j]&15).toString(16).toUpperCase()+h2(b[j+1]))}}
+ return out;
+}
+async function readDtc(mode){
+ const L=await cmd(mode,10000),e=errOf(L);if(e&&!/NO DATA/i.test(e))throw new Error(e);if(e)return[];
+ return dtcFrom(L,mode);
+}
+document.querySelectorAll('[data-m]').forEach(b=>b.onclick=async()=>{
+ try{const r=await readDtc(b.dataset.m);lastDtc=r;$('#dl').innerHTML=r.length?r.map(c=>`<div class="dtc"><b>${c}</b><span class="mu">${CAT[c[0]]}</span><button data-ai="${c}">Pesquisar com IA</button></div>`).join(''):'Nenhuma falha neste grupo.'}catch(e){$('#dl').textContent='Erro: '+e.message}});
+$('#clr').onclick=async()=>{if(!T||!confirm('Apagar falhas e dados de congelamento da ECU? Isso também reinicia os monitores de prontidão.'))return;
+ try{const r=await cmd('04');$('#dl').textContent='Comando enviado: '+r.join(' ');await info()}catch(e){fail(e)}};
+
+/* ---------- monitor CAN ---------- */
+function monLine(l){
+ const t=l.split(/\s+/);
+ if(!/^([0-9A-F]{3}|[0-9A-F]{8})$/i.test(t[0])||t.length<2||!t.slice(1).every(x=>/^[0-9A-F]{2}$/i.test(x))){$('#mm').textContent=l;return}
+ const now=performance.now(),id=t[0].toUpperCase(),d=t.slice(1).map(x=>x.toUpperCase());let r=mon.rows.get(id);
+ if(!r){r={n:0,t0:now,hl:d.map(()=>now),d};mon.rows.set(id,r)}
+ r.hl=d.map((v,i)=>r.d[i]===v&&r.hl[i]!==undefined?r.hl[i]:now);r.d=d;r.n++;r.t=now;mon.cnt++;
+ if(mon.all.length<100000)mon.all.push([(now-mon.t0)|0,id,d.join(' ')]);
+}
+function rend(m){
+ const now=performance.now();
+ $('#mt').innerHTML=[...m.rows.keys()].sort().map(id=>{const r=m.rows.get(id);
+  return`<tr><td>${id}</td><td>${r.n}</td><td>${r.n>1?((r.t-r.t0)/(r.n-1))|0:'—'}</td><td>${r.d.map((v,i)=>`<span class="${now-r.hl[i]<1500?'h':''}">${v}</span>`).join(' ')}</td></tr>`}).join('');
+ $('#mc').textContent=m.cnt+' frames · '+m.rows.size+' IDs';
+}
+async function monStart(){
+ if(!T)return st('Conecte primeiro','wr');if(live){live=false;await sleep(300)}
+ const id=$('#flt').value.trim().toUpperCase();
+ if(id&&!/^([0-9A-F]{3}|[0-9A-F]{8})$/.test(id))return st('ID inválido (3 ou 8 dígitos hex)','er');
+ try{await cmd('ATH1');await cmd('ATCAF0');await cmd('ATCRA'+id)}catch(e){return fail(e)}
+ mon={rows:new Map(),all:[],cnt:0,t0:performance.now(),stop:null};lastMon=mon;buf='';
+ mon.tm=setInterval(()=>rend(mon),250);$('#ms').textContent='Parar';$('#mm').textContent='Escutando…';T.write('ATMA\r');
+}
+async function monStop(){
+ const m=mon;if(!m)return;
+ await new Promise(r=>{m.stop=r;T.write('\r');setTimeout(r,2000)});
+ mon=null;clearInterval(m.tm);rend(m);buf='';$('#ms').textContent='Iniciar';$('#mm').textContent='Parado';
+ try{await cmd('ATH0');await cmd('ATCAF1');await cmd('ATCRA')}catch{}
+}
+$('#ms').onclick=()=>(mon?monStop():monStart()).catch(fail);
+
+/* ---------- terminal ---------- */
+let lastCmd='';
+const esc=x=>x.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function restoreHdr(){try{await cmd('ATCAF1');await cmd('ATSP'+(proto.length>1?proto.slice(1):proto));tlog('(cabeçalho/protocolo restaurados)')}catch{}}
+async function send(c){
+ if(!T)return st('Conecte primeiro','wr');if(mon)return st('Pare o monitor antes','wr');
+ const L=c.split(';').map(x=>x.trim()).filter(Boolean);if(!L.length)return;lastCmd=c.trim();
+ const risk=L.find(x=>!/^AT/i.test(x)&&/^(04|10|11|14|27|2E|2F|31|85|28|87)/.test(hx(x)));
+ if(risk&&!confirm('"'+risk+'" pode alterar o veículo/ECU. Enviar mesmo assim?'))return;
+ try{for(const x of L)await cmd(x,9000)}catch(e){tlog('! '+e.message)}
+ if(L.some(x=>/^ATSH/i.test(x)))await restoreHdr();
+}
+$('#cs').onclick=()=>{const v=$('#ci').value;if(v){send(v);$('#ci').value=''}};
+$('#ci').onkeydown=e=>{if(e.key==='Enter')$('#cs').click()};
+const PRE=[
+['Adaptador ELM327',[['Reset','ATZ'],['Versão','ATI'],['Tensão','ATRV'],['Protocolo','ATDP'],['Nº protocolo','ATDPN'],['Contadores de erro CAN','ATCS'],['Protocolo auto','ATSP0'],['Espaços off (saída menor)','ATS0'],['Espaços on','ATS1'],['Headers on','ATH1'],['Headers off','ATH0'],['Auto-format on','ATCAF1'],['Auto-format off','ATCAF0'],['Timing adaptativo','ATAT1']]],
+['OBD-II (leitura)',[['PIDs 01-20','0100'],['PIDs 21-40','0120'],['PIDs 41-60','0140'],['PIDs 61-80','0160'],['PIDs 81-A0','0180'],['PIDs A1-C0','01A0'],['Status/MIL','0101'],['Quadro congelado','0102'],['Falhas armazenadas','03'],['Pendentes','07'],['Permanentes','0A'],['VIN','0902'],['Cal. ID','0904'],['CVN','0906'],['Nome da ECU','090A'],['Modo 06','0600']]],
+['UDS / módulos (leitura)',[['Motor: VIN (OBD)','ATSH7E0;0902'],['Motor: Cal. ID','ATSH7E0;0904'],['Câmbio: Cal. ID','ATSH7E1;0904'],['Motor: VIN (UDS)','ATSH7E0;22F190'],['Motor: nº peça','ATSH7E0;22F187'],['Motor: DTCs (UDS)','ATSH7E0;1902AF'],['Câmbio: DTCs (UDS)','ATSH7E1;1902AF'],['Motor: tester present','ATSH7E0;3E00']]]];
+const favs=()=>{try{return JSON.parse(localStorage.getItem('canFav')||'[]')}catch{return[]}};
+const saveFavs=a=>{try{localStorage.setItem('canFav',JSON.stringify(a))}catch{st('Este navegador não permite salvar favoritos','wr')}};
+function rendPre(){
+ const G=[...PRE,['Favoritos',favs().map(([n,c])=>[n,c,1])]];
+ $('#pre').innerHTML=G.map(([g,L],gi)=>`<details${gi===1||g==='Favoritos'?' open':''}><summary>${g}</summary><div class="pb">${L.length?L.map(([n,c,f],i)=>`<span><button data-c="${esc(c)}" title="${esc(c)}">${esc(n)}</button>${f?`<button class="x" data-d="${i}" title="Remover">×</button>`:''}</span>`).join(''):'<span class="mu">Nenhum ainda. Digite um comando e clique em ☆ Salvar.</span>'}</div></details>`).join('');
+}
+$('#pre').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.c!==undefined){$('#ci').value=b.dataset.c;send(b.dataset.c)}
+ else if(b.dataset.d!==undefined){const a=favs();a.splice(+b.dataset.d,1);saveFavs(a);rendPre()}};
+$('#cf').onclick=()=>{const c=$('#ci').value.trim()||lastCmd;if(!c)return;const n=prompt('Nome do favorito:',c.slice(0,24));if(!n)return;const a=favs();a.push([n,c]);saveFavs(a);rendPre()};
+$('#tc').onclick=()=>{$('#term').textContent='';tl.length=0};
+$('#te').onclick=()=>dl('terminal.txt',tl.join('\n'));
+$('#fs').onclick=async()=>{
+ const id=$('#fi').value.trim().toUpperCase(),d=hx($('#fd').value);
+ if(!T||mon)return st('Conecte e pare o monitor','wr');
+ if(!/^([0-9A-F]{3}|[0-9A-F]{8})$/.test(id)||!/^([0-9A-F]{2}){1,8}$/.test(d))return st('ID ou dados inválidos','er');
+ if(!confirm('Enviar frame '+id+' ['+d+'] ao barramento?'))return;
+ try{await cmd('ATSH'+id);await cmd('ATCAF0');await cmd(d,9000,true)}catch(e){tlog('! '+e.message)}
+ await restoreHdr();
+};
+
+/* ---------- geral ---------- */
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+ document.querySelectorAll('main>section').forEach(s=>s.hidden=s.id!==b.dataset.t)});
+$('#lv').onclick=liveToggle;$('#bX').onclick=()=>disc();
+$('#bU').onclick=()=>connSerial().catch(async e=>{await disc();fail(e)});
+$('#bB').onclick=()=>connBle().catch(async e=>{await disc();fail(e)});
+$('#bD').onclick=()=>connDemo().catch(async e=>{await disc();fail(e)});
+$('#csvL').onclick=()=>dl('painel.csv','hora,parametro,valor,unidade\n'+samples.map(r=>r.join(',')).join('\n'));
+$('#csvM').onclick=()=>lastMon&&dl('can.csv','t_ms,id,dados\n'+lastMon.all.map(r=>r.join(',')).join('\n'));
+/* ---------- IA para códigos de falha ---------- */
+let lastDtc=[];
+const ST=(k,d='')=>{try{return localStorage.getItem(k)||d}catch{return d}},SV=(k,v)=>{try{localStorage.setItem(k,v)}catch{}};
+const SYS='Você é um especialista em diagnóstico automotivo (OBD-II/CAN). Responda em português do Brasil, de forma objetiva, com estas seções: Significado; Gravidade (e se dá para rodar com o carro); Causas prováveis (da mais para a menos provável); Sintomas típicos; Como verificar (passo a passo prático). Se o código for específico de fabricante e o veículo não foi informado, diga isso. Use os outros códigos e as leituras fornecidas para refinar o diagnóstico. Não invente: se não tiver certeza, diga.';
+const md=t=>esc(t).split('\n').map(l=>/^#{1,4} /.test(l)?'<b>'+l.replace(/^#+ /,'')+'</b>':/^\s*[-*] /.test(l)?'• '+l.replace(/^\s*[-*] /,''):l).join('<br>').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+function aiPrompt(code){
+ const v=$('#vh').value.trim(),o=lastDtc.filter(x=>x!==code);let lv='';
+ if($('#al').checked)lv=PIDS.map(p=>{const e=document.querySelector('#c'+p.id+' b');return[p.n,e&&e.textContent,p.u]}).filter(x=>x[1]&&!/^(—|n\/d)$/.test(x[1])).map(x=>x[0]+': '+x[1]+' '+x[2]).join('; ');
+ return 'Código de falha: '+code+'\nVeículo: '+(v||'não informado')+(o.length?'\nOutros códigos presentes: '+o.join(', '):'')+(lv?'\nLeituras ao vivo atuais: '+lv:'')+'\n\nExplique este código para um diagnóstico prático.';
+}
+const aiCode=()=>{const c=$('#dq').value.trim().toUpperCase(),b=$('#aq');if(/^[PCBU][0-9A-F]{4}$/.test(c))return c;b.hidden=false;b.textContent='Informe um código válido, como P0420.';return null};
+async function aiRun(){
+ const code=aiCode();if(!code)return;const box=$('#aq');box.hidden=false;SV('canVeh',$('#vh').value);
+ const key=ST('canKey');
+ if(!key){box.innerHTML='Sem chave da API. Clique em <b>Chave/modelo…</b> para configurar, ou use <b>Abrir no Claude.ai</b> (não precisa de chave).';return}
+ box.textContent='Pesquisando '+code+'…';
+ try{
+  const body={model:ST('canModel','claude-sonnet-5-5'),max_tokens:1500,system:SYS,messages:[{role:'user',content:aiPrompt(code)}]};
+  if($('#aw').checked)body.tools=[{type:'web_search_20250305',name:'web_search',max_uses:3}];
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify(body)});
+  const j=await r.json();if(!r.ok)throw new Error(j.error&&j.error.message||'HTTP '+r.status);
+  box.innerHTML='<b>'+esc(code)+'</b><br>'+md(j.content.filter(x=>x.type==='text').map(x=>x.text).join(''))+'<br><span class="mu">Resposta gerada por IA. Confirme no manual de serviço do veículo.</span>';
+ }catch(e){box.textContent='Erro na consulta: '+e.message+'. Verifique a chave e o modelo, ou use “Abrir no Claude.ai”.'}
+}
+$('#vh').value=ST('canVeh');
+$('#ai').onclick=aiRun;$('#dq').onkeydown=e=>{if(e.key==='Enter')aiRun()};
+$('#aiw').onclick=()=>{const c=aiCode();if(c)window.open('https://claude.ai/new?q='+encodeURIComponent(SYS+'\n\n'+aiPrompt(c)),'_blank','noopener')};
+$('#ak').onclick=()=>{const k=prompt('Chave da API Anthropic (fica salva só neste navegador; use uma chave com limite de gasto):',ST('canKey'));if(k===null)return;SV('canKey',k.trim());const m=prompt('Modelo:',ST('canModel','claude-sonnet-5-5'));if(m)SV('canModel',m.trim())};
+$('#dl').onclick=e=>{const b=e.target.closest('[data-ai]');if(b){$('#dq').value=b.dataset.ai;aiRun()}};
+rendPre();buildGrid();
+if(!navigator.serial){$('#bU').disabled=true;$('#bU').title='Use Chrome/Edge (desktop ou Android)'}
+if(!navigator.bluetooth){$('#bB').disabled=true;$('#bB').title='Use Chrome/Edge (desktop ou Android)'}
+</script></body></html>
